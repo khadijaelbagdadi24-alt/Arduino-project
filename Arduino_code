@@ -1,0 +1,85 @@
+#include <Servo.h>
+#include <IRremote.h>
+#define GREEN_LED 8
+#define YELLOW_LED 9
+#define RED_LED 10
+#define TRIG_PIN 11
+#define ECHO_PIN 12
+#define BUZZER_PIN 3 
+#define SERVO_PIN 6
+#define IR_RECV_PIN 13
+Servo myBarrier;
+const int DISTANCE_SEUIL_CM = 50; 
+const int RED_TIME = 5000; 
+
+void setup() {
+  pinMode(GREEN_LED, OUTPUT);
+  pinMode(YELLOW_LED, OUTPUT);
+  pinMode(RED_LED, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+  myBarrier.attach(SERVO_PIN);
+  myBarrier.write(90); 
+  digitalWrite(GREEN_LED, HIGH);
+  digitalWrite(YELLOW_LED, LOW);
+  digitalWrite(RED_LED, LOW);
+  Serial.begin(9600);
+  IrReceiver.begin(IR_RECV_PIN, ENABLE_LED_FEEDBACK);
+  Serial.println("System Started: Waiting for car or remote...");
+}
+void trafficSequence() {
+  if (digitalRead(GREEN_LED) == LOW) return; 
+  
+  Serial.println("Sequence Triggered!");
+  for (int i = 0; i < 4; i++) {
+    digitalWrite(GREEN_LED, LOW); delay(250);
+    digitalWrite(GREEN_LED, HIGH); delay(250);
+  }
+  digitalWrite(GREEN_LED, LOW);
+  digitalWrite(YELLOW_LED, HIGH);
+  delay(2000); 
+  digitalWrite(YELLOW_LED, LOW);
+  digitalWrite(RED_LED, HIGH);
+  myBarrier.write(0); 
+  Serial.println("STOP: Barrier Closed.");
+  unsigned long startRed = millis();
+  while (millis() - startRed < RED_TIME) {
+    tone(BUZZER_PIN, 1000); delay(200);
+    noTone(BUZZER_PIN); delay(200);
+  }
+  digitalWrite(YELLOW_LED, HIGH);
+  delay(2000); 
+  myBarrier.write(90); 
+  digitalWrite(RED_LED, LOW);
+  digitalWrite(YELLOW_LED, LOW);
+  digitalWrite(GREEN_LED, HIGH);
+  Serial.println("GO: Barrier Opened.");
+}
+
+void loop() { 
+  if (IrReceiver.decode()) {
+    unsigned long code = IrReceiver.decodedIRData.decodedRawData;
+    if (code != 0) {
+      Serial.print("Remote Control Override! Code: ");
+      Serial.println(code, HEX);
+      trafficSequence(); 
+    }
+    IrReceiver.resume(); 
+  }
+  digitalWrite(TRIG_PIN, LOW); delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH); delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+  
+  long duration = pulseIn(ECHO_PIN, HIGH, 30000);
+  long distance = duration / 58;
+
+  if (distance > 0 && distance <= DISTANCE_SEUIL_CM && digitalRead(GREEN_LED) == HIGH) {
+    Serial.print("Object Detected at: ");
+    Serial.print(distance);
+    Serial.println(" cm.");
+    trafficSequence();
+  }
+  
+  delay(100); 
+}
